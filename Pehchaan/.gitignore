@@ -1,0 +1,218 @@
+# ===========================================================================
+# PEHCHAAN — repository ignore rules
+#
+# Single source of truth: there are no nested .gitignore files, because
+# directory-agnostic patterns such as `.env`, `node_modules/`, `dist/` and
+# `.venv/` match at any depth.
+# ===========================================================================
+
+# --- Byte-compiled / optimised Python --------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual environments --------------------------------------------
+.venv/
+venv/
+env/
+
+# --- Secrets (never commit) -------------------------------------------
+.env
+.env.local
+.env.*.local
+*.env
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets/
+
+# --- Node.js -----------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.pnpm-debug.log*
+
+# --- Build output -------------------------------------------------------
+dist/
+build/
+*.egg-info/
+*.whl
+*.egg
+pip-wheel-metadata/
+*.tsbuildinfo
+vite.config.d.ts
+
+# --- Logs ---------------------------------------------------------------
+*.log
+*.log.err
+logs/
+
+# --- Caches -------------------------------------------------------------
+.cache/
+.pytest_cache/
+.tox/
+htmlcov/
+coverage/
+.coverage
+
+# --- Temporary / backup --------------------------------------------------
+*.tmp
+*.temp
+tmp/
+*.orig
+*.bak
+*.backup
+*~
+*.tgz
+*.tar.gz
+nul
+
+# --- Test artifacts -------------------------------------------------------
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# --- Databases ------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Model weights and training output (large / regenerable) --------------
+*.pth
+*.onnx
+*.pt
+*.bin
+*.model
+*.weights
+model_manifest.json
+training/*.json
+training/checkpoints/
+*.metrics.json
+
+# --- Uploads / generated ---------------------------------------------------
+uploads/
+
+# --- Profiling / Docker -----------------------------------------------------
+*.prof
+docker-compose.override.yml
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# --- Editor / IDE ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+.settings/
+.project
+.classpath
+*.iml
+*.ipr
+*.iws
+
+# ===========================================================================
+# PROJECT SPECIFIC
+# ===========================================================================
+
+# Raw source dataset. The canonical training copy lives in
+# backend/training/data (902 images); DATASET/ was a byte-identical
+# duplicate of it and has been deleted along with its zip.
+DATASET/
+*.zip
+
+# The 902 training images themselves.
+backend/training/data/
+
+# Images produced by backend/scripts/cardgen (1200 cards, ~226 MB). Regenerable
+# from sample-data/templates/mock_government_ids_300.xlsx, so like the 902 above
+# they stay on disk only. The generator itself IS tracked.
+backend/training/data_generated/
+backend/scripts/cardgen/preview/
+
+# Gateway store-and-forward outbox: scans queued while the database was
+# unreachable. Holds personal data and belongs to one machine only.
+Pehchaan/data/
+
+# Local issued-documents database (built per machine with its own PII_HASH_KEY)
+# and scratch output of the trainers.
+backend/data/registry/
+backend/training/.region_preview.jpg
+
+# Fabric network: generated identities (private keys named priv_sk), channel
+# blocks and vendored chaincode dependencies. Recreated by fabric/network.sh.
+fabric/network/organizations/
+fabric/network/channel-artifacts/
+fabric/chaincode/*/vendor/
+
+# Vercel CLI link/state for this machine.
+.vercel/
+
+# Bundled gateway for the Vercel function (built by `npm run build`).
+Pehchaan/dist-server/
+.npm-cache/
+
+# TLS material for the gateway-engine link (backend/scripts/make_tls_certs.py).
+backend/certs/
+.pip-cache/
+
+# Generated marketing-video output (its media is never committed).
+Pehchaan/brag-output/
+
+# Reference and demo ID documents: kept on disk, never committed.
+# sample-data/README.md is tracked; everything else below it stays local.
+sample-data/**
+!sample-data/README.md
+
+# Personal reference material moved out of the repo root. Ignored as a whole
+# directory so a new file type dropped in here does not become untracked
+# noise - the extension rules below would otherwise be the only thing
+# covering it.
+archive/
+
+# Presentations, blank ID templates and chat images parked at the repo root.
+*.pptx
+*.docx
+*.xlsx
+*.xls
+*.csv
+*.pdf
+4 sawal.docx
+4sawal.pdf
+Aadhaar_Blank_Template.docx
+PAN_Card_Blank_Template.docx
+Passport_Stacked_OneAboveOther.docx
+Synthetic_Indian_Passport_Blank_Template.docx
+BRUTAL AUDIT.docx
+brutal audit.pdf
+passport_template.jpeg
+WhatsApp Image*.jpeg
+mock_government_ids_300_entries.xlsx
+Pehchaan-SIH2026-Idea-Presentation.pdf
+SIH2026-IDEA-Presentation-Format.pptx
+AI-POWERED PASSPORT AUTHENTICITY ENGINE*
+
+# Status and session documents kept local by decision.
+Pehchaan-Session-Report.md
+SESSION-SUMMARY.md
+PROJECT-STATUS.md
+BIBLIOGRAPHY.md
+
+# Windows reserved name and unexpanded-env-var accidents.
+%TEMP%/
+%USERPROFILE%/
+
+# Office lock files.
+~$*.pptx
+~$*.docx
+
+# Android app builds (rebuilt from mobile/; shared as a release file, not in git).
+*.apk
+*.aab
