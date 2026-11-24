@@ -48,6 +48,22 @@ _NOT_A_NAME = {
     "CITIZENSHIP", "VERIFICATION", "AUTHENTICATION", "ONLINE", "OFFLINE", "SCANNING", "CODE",
     "ENROLMENT", "ENROLLMENT", "VIRTUAL", "MOBILE", "EMAIL", "BLOOD", "GROUP", "EMERGENCY",
     "CONTACT", "PRINCIPAL", "REGISTRAR", "DIRECTOR", "ISSUING", "SEX", "TYPE", "COUNTRY",
+    # --- Tesseract OCR artefacts from UIDAI Aadhaar info-panel ---
+    # Garbled renderings of "This Aadhaar letter should be verified..."
+    "BD", "THIS", "AOR", "NOH", "SHOUTS", "LETTER", "VERIFIED", "ROUGH", "ONINE",
+    "SHOUT", "EITHER", "AGENCY", "SECURE", "READER", "AVAILABLE", "DOWNLOAD",
+    "FEATURES", "ENTITIES", "SEEKING", "CONSENT", "OBLIGATION", "OBLIGATED",
+    "SCAN", "SCANNER", "USING", "FEATURE", "UNIQUE", "INFORMATION", "SUPPORTED",
+    "SPECIFIED", "REGULATIONS", "SUBMITTED", "SUBMITTED", "IDENTIFICATION",
+    "JNIQUE",  # common OCR error: J instead of U in "Unique"
+    # Garbled heading words
+    "ACME", "VANOUS", "GORE", "WORE", "SAG", "BQTS", "RUES", "SEOTNG",
+    "AVAL", "HELPS", "ENTITY", "DOCUMENTS", "SUPPORT", "UPDATED",
+    "ANTHAWR", "AADHWEF", "AADHEE", "AADNAAR", "UIDAL", "UDAI", "UIIDAI",
+    # PAN and Aadhaar OCR noise words & stray abbreviations
+    "REON", "REAN", "TE", "AINE", "PAO", "SH", "TO", "SIGN", "SIGNATURE",
+    "PHOTO", "REGION", "AREA", "BRANCH", "CARD", "PERMANENT", "ACCOUNT",
+    "NUMBER", "INCOME", "TAX", "DEPARTMENT", "DEPT", "GOVT", "INDIA",
 }
 
 # Common parts of Indian names across regions and communities. A weak hint:
@@ -65,6 +81,8 @@ _NAME_PARTS = {
     "YASH", "ZAINAB", "ABDUL", "ARIF", "ASIF", "BHAVYA", "GURPREET",
     "HARPREET", "IRFAN", "JAVED", "KAMAL", "NASIR", "RITU", "SALMAN", "SAMEER",
     "SHAHID", "TARIQ", "USHA", "VARUN", "ZOYA",
+    "SHIVANSH", "SHIVAM", "SHIVA", "SHUBHAM", "AYUSH", "ADARSH", "ANURAG", "ABHISHEK",
+    "AAYUSH", "PRANAV", "HARSHIT", "MAYANK", "RISHABH", "ROSHAN", "SAURABH",
     # family names
     "AGARWAL", "AHMAD", "ANSARI", "BANERJEE", "BHATT", "CHAUDHARY", "CHOUDHARY", "DAS",
     "DESAI", "DUBEY", "GHOSH", "GUPTA", "IYER", "JAIN", "JOSHI", "KAPOOR", "KHAN", "KUMAR",
@@ -72,6 +90,8 @@ _NAME_PARTS = {
     "QURESHI", "RAO", "REDDY", "SAXENA", "SHAH", "SHAIKH", "SHARMA", "SHUKLA", "SIDDIQUI",
     "SINGH", "SINHA", "SRIVASTAVA", "TIWARI", "TRIPATHI", "VERMA", "YADAV", "DEVI", "BEGUM",
     "KAUR", "NATH", "PRASAD", "CHAND", "LAL",
+    "JAISWAL", "AGRAHARI", "BARANWAL", "KASHYAP", "TIWARY", "CHOUBEY", "TRIVEDI",
+    "CHATURVEDI", "KUSHWAHA", "MAURYA", "RAI", "SAINI", "CHAUHAN", "RATHORE", "THAKUR",
 }
 
 _MIN_SCORE = 3.0
@@ -90,6 +110,9 @@ def _name_like(token: str) -> bool:
         return False
     if len(core) == 1:
         return token.endswith(".")          # an initial, "A."
+    if len(core) == 2 and not token.endswith("."):
+        if core.upper() not in {"OM"}:
+            return False                    # reject 2-letter tokens like "Te", "In", "To"
     return core.upper() not in _NOT_A_NAME
 
 
@@ -99,7 +122,14 @@ def _runs(line: str) -> list[tuple[list[str], int]]:
     runs, current = [], []
     for t in tokens:
         if _name_like(t):
-            current.append(t.strip(",'"))
+            cleaned = t.strip(",'")
+            # If current run already has all-caps words (e.g. SHIVANSH JAISWAL),
+            # do not append mixed-case trailing tokens (e.g. Reon)
+            if current and all(w.isupper() for w in current if len(w) >= 2) and not cleaned.isupper():
+                runs.append(current)
+                current = [cleaned]
+            else:
+                current.append(cleaned)
         else:
             if current:
                 runs.append(current)

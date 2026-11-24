@@ -125,10 +125,10 @@ echo [5/5] Starting servers...
 echo.
 
 REM ---- Start backend in a new window ----
-start "Pehchaan Backend" cmd /k "cd /d %BACKEND_DIR% && call .venv\Scripts\activate.bat && echo Backend starting on https://127.0.0.1:8000 (mutual TLS) && python run_engine.py --reload"
+start "Pehchaan Backend" cmd /k "cd /d %BACKEND_DIR% && call .venv\Scripts\activate.bat && echo Backend starting on https://127.0.0.1:8000 (mutual TLS) && .venv\Scripts\python.exe run_engine.py --reload"
 
 REM Give backend a moment to start
-timeout /t 3 /nobreak >nul
+ping 127.0.0.1 -n 4 >nul 2>&1
 
 REM ---- Start frontend in a new window ----
 start "Pehchaan Frontend" cmd /k "cd /d %FRONTEND_DIR% && echo Frontend starting on http://localhost:3000 && npm run dev"

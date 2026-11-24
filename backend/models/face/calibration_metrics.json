@@ -1,0 +1,29 @@
+{
+  "model_detector": "OpenCV YuNet (face_detection_yunet_2023mar.onnx)",
+  "model_recognizer": "OpenCV SFace (face_recognition_sface_2021dec.onnx)",
+  "backbone": "MobileFaceNet (128-dimensional embedding, SFace angular loss)",
+  "alignment": "5-point canonical affine transform (cv2.FaceRecognizerSF.alignCrop)",
+  "evaluation_dataset": {
+    "n_identities": 31,
+    "n_genuine_pairs": 496,
+    "n_impostor_pairs": 930,
+    "cross_domain_simulation": "Halftone grain, JPEG Q45-65, low-DPI scan downscale, Gaussian MTF blur"
+  },
+  "distributions": {
+    "genuine_mean": 0.747,
+    "genuine_std": 0.1334,
+    "impostor_mean": 0.1839,
+    "impostor_std": 0.1238
+  },
+  "calibrated_thresholds": {
+    "eer_threshold": 0.412,
+    "eer_value": 0.0427,
+    "match_threshold_high_sec": 0.546,
+    "match_threshold_standard": 0.46,
+    "mismatch_threshold": 0.308,
+    "recommended_bands": [
+      0.546,
+      0.308
+    ]
+  }
+}

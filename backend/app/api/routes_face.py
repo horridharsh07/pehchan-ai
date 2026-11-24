@@ -6,8 +6,8 @@ from __future__ import annotations
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.models.schemas import FaceSummary
-from app.modules.face.detector import detect_largest_face
-from app.modules.face.verifier import compare_faces
+from app.modules.face.detector import detect_face_candidates, select_document_portrait
+from app.modules.face.verifier import compare_candidates
 from app.utils.image_utils import bytes_to_bgr
 
 router = APIRouter(prefix="/api/face", tags=["face"])
@@ -24,10 +24,10 @@ async def verify_face(document_photo: UploadFile = File(...), live_photo: Upload
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
-    doc_face = detect_largest_face(doc_image)
-    live_face = detect_largest_face(live_image)
+    doc_cand = select_document_portrait(detect_face_candidates(doc_image))
+    live_cand = select_document_portrait(detect_face_candidates(live_image))
 
-    result = compare_faces(doc_face[0] if doc_face else None, live_face[0] if live_face else None)
+    result = compare_candidates(doc_image, doc_cand, live_image, live_cand)
 
     return FaceSummary(
         attempted=True,
@@ -36,4 +36,7 @@ async def verify_face(document_photo: UploadFile = File(...), live_photo: Upload
         backend=result.backend,
         document_face_found=result.document_face_found,
         live_face_found=result.live_face_found,
+        decision=result.decision,
+        threshold=result.match_threshold,
+        mismatch_threshold=result.mismatch_threshold,
     )

@@ -41,8 +41,19 @@ from app.models.schemas import (
     TamperingSummary,
     ValidationSummary,
 )
-from app.modules.face.detector import detect_faces, detect_largest_face, pick_portrait
-from app.modules.face.verifier import backend_bands, backend_label, compare_faces
+from app.modules.face.detector import (
+    detect_face_candidates,
+    detect_faces,
+    detect_largest_face,
+    pick_portrait,
+    select_document_portrait,
+)
+from app.modules.face.verifier import (
+    backend_bands,
+    backend_label,
+    compare_candidates,
+    compare_faces,
+)
 from app.modules.classification import auto_detect
 from app.modules.classification.classifier import classifier
 from app.modules.ocr.engine import run_ocr
@@ -199,25 +210,29 @@ async def scan_document(
     # Classifier, OCR, tampering forensics and face detection are independent — run them together.
     loop = asyncio.get_running_loop()
     first_ocr_type = "national_id" if requested_type == "auto" else requested_type
-    classifier_probs, ocr_result, tampering, doc_faces = await asyncio.gather(
+    classifier_probs, ocr_result, tampering, doc_candidates = await asyncio.gather(
         loop.run_in_executor(_pool, classifier.predict_proba, doc_bytes),
         loop.run_in_executor(_pool, partial(run_ocr, doc_image, first_ocr_type)),
         loop.run_in_executor(_pool, partial(analyze_tampering, doc_bytes, doc_image)),
-        loop.run_in_executor(_pool, partial(detect_faces, doc_image)),
+        loop.run_in_executor(_pool, partial(detect_face_candidates, doc_image)),
     )
-    # Pick the holder's portrait by photo quality, not size: passports also
-    # print a faint ghost copy that must never be used for matching.
-    portrait = pick_portrait(doc_faces)
+    doc_faces = [c.box for c in doc_candidates]
+    portrait_candidate = select_document_portrait(doc_candidates)
     doc_face_crop = (
-        (doc_image[portrait.y:portrait.y + portrait.h, portrait.x:portrait.x + portrait.w], portrait)
-        if portrait else None
+        (doc_image[portrait_candidate.box.y:portrait_candidate.box.y + portrait_candidate.box.h,
+                   portrait_candidate.box.x:portrait_candidate.box.x + portrait_candidate.box.w],
+         portrait_candidate.box)
+        if portrait_candidate else None
     )
 
     # --- Document type: auto-detect, or confirm the officer's choice ---
     detection = auto_detect.decide(classifier_probs, ocr_result.raw_text)
     if requested_type == "auto":
         document_type = detection.detected_type
-        if _tesseract_family(document_type) != _tesseract_family(first_ocr_type):
+        if document_type != first_ocr_type and (
+            _tesseract_family(document_type) != _tesseract_family(first_ocr_type)
+            or document_type in ("aadhar", "passport", "visa", "pan")
+        ):
             ocr_result = await loop.run_in_executor(_pool, partial(run_ocr, doc_image, document_type))
 
     classification = ClassificationSummary(
@@ -324,10 +339,18 @@ async def scan_document(
             live_image = bytes_to_bgr(live_bytes)
         except ValueError as e:
             raise HTTPException(400, f"Live capture: {e}") from e
-        live_face_crop = await loop.run_in_executor(_pool, detect_largest_face, live_image)
-        face_match = compare_faces(
-            doc_face_crop[0] if doc_face_crop else None,
-            live_face_crop[0] if live_face_crop else None,
+        live_candidates = await loop.run_in_executor(_pool, partial(detect_face_candidates, live_image))
+        live_candidate = select_document_portrait(live_candidates)
+        live_crop = (
+            live_image[live_candidate.box.y:live_candidate.box.y + live_candidate.box.h,
+                       live_candidate.box.x:live_candidate.box.x + live_candidate.box.w]
+            if live_candidate else None
+        )
+        face_match = compare_candidates(
+            doc_image if portrait_candidate else None,
+            portrait_candidate,
+            live_image if live_candidate else None,
+            live_candidate,
         )
         face_summary = FaceSummary(
             attempted=True,
@@ -342,7 +365,7 @@ async def scan_document(
             decision=face_match.decision,
             document_face_candidates=len(doc_faces),
             document_face_thumb=_thumb(doc_face_crop[0]) if doc_face_crop else None,
-            live_face_thumb=_thumb(live_face_crop[0]) if live_face_crop else None,
+            live_face_thumb=_thumb(live_crop) if live_crop is not None else None,
         )
 
     # --- Risk Engine ---

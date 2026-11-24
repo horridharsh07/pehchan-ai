@@ -49,14 +49,9 @@ def verhoeff_checksum(number: str) -> bool:
 # are often OCR noise from the Hindi label).
 # ---------------------------------------------------------------------------
 
+from app.modules.ocr.name_finder import _NOT_A_NAME, _NAME_PARTS
+
 _DATE_RE = re.compile(r"(\d{2})\s*[/\-.]\s*(\d{2})\s*[/\-.]\s*(\d{4})")
-_NOT_A_NAME = {
-    "NAME", "FATHER", "FATHERS", "MOTHER", "DATE", "BIRTH", "GENDER", "MALE", "FEMALE",
-    "ADDRESS", "SIGNATURE", "GOVERNMENT", "INDIA", "SPECIMEN", "SYNTHETIC", "INCOME",
-    "TAX", "DEPARTMENT", "PERMANENT", "ACCOUNT", "NUMBER", "AADHAAR", "REPUBLIC",
-    "PASSPORT", "NATIONALITY", "PLACE", "ISSUE", "EXPIRY", "AUTHORITY", "CARD", "OF",
-    "GIVEN", "SURNAME", "LICENCE", "LICENSE", "DRIVING", "VALID", "HOLDER", "SPOUSE",
-}
 
 
 def _lines(text: str) -> list[str]:
@@ -70,11 +65,29 @@ def _as_name(candidate: str) -> str | None:
     words = cleaned.split()
     if not all(w[0].isupper() for w in words):
         return None
-    if sum(c.isalpha() for c in cleaned) < 3:
-        return None
+
+    # If first words are uppercase (e.g. SHIVANSH JAISWAL), prune trailing mixed-case tokens (e.g. Reon)
+    if len(words) >= 2 and words[0].isupper() and len(words[0]) >= 2:
+        caps_words = []
+        for w in words:
+            if w.isupper() and len(w) >= 2 and w.upper() not in _NOT_A_NAME:
+                caps_words.append(w)
+            else:
+                break
+        if len(caps_words) >= 2:
+            words = caps_words
+
+    # Filter out 2-letter non-names (e.g. Te, In, To)
+    for w in words:
+        core = w.strip(".,'")
+        if len(core) <= 2 and not w.endswith(".") and core.upper() not in {"OM"}:
+            return None
+
     if any(w.upper().strip(".") in _NOT_A_NAME for w in words):
         return None
-    return cleaned
+    if len(words) < 2 or sum(c.isalpha() for c in "".join(words)) < 5:
+        return None
+    return " ".join(words)
 
 
 def _as_date(candidate: str, index: int = 0) -> str | None:
@@ -140,8 +153,8 @@ def _find_pan(raw_text: str) -> str | None:
 # Aadhaar
 # ---------------------------------------------------------------------------
 
-_AADHAAR_PATTERN = re.compile(r"\b(\d{4})\s*(\d{4})\s*(\d{4})\b")
-_VID_PATTERN = re.compile(r"\b(\d{4})\s*(\d{4})\s*(\d{4})\s*(\d{4})\b")
+_AADHAAR_PATTERN = re.compile(r"(?<![/\-.])\b(\d{4})[ \t]+(\d{4})[ \t]+(\d{4})\b")
+_VID_PATTERN = re.compile(r"\b(\d{4})[ \t]+(\d{4})[ \t]+(\d{4})[ \t]+(\d{4})\b")
 
 _AADHAAR_NAME_LABELS = [
     r"(?:name|naam)\s*[:\-]?\s*([A-Za-z ]{2,50})",
@@ -194,6 +207,125 @@ def extract_aadhaar_fields(raw_text: str) -> dict:
     if name:
         fields["name"] = name
 
+    # Punjabi/Gurmukhi Aadhaar address-letter format:
+    # "To\n<Name>\nD/O <Father Name>" or "Shelika Anand\nD/O Ram Anand"
+    # The name appears right after "To" in the address section header.
+    if "name" not in fields:
+        to_match = re.search(r"(?:^|\n)To\s*\n\s*([A-Za-z][A-Za-z ]{2,40})\s*\n", raw_text)
+        if to_match:
+            candidate = _as_name(to_match.group(1).strip())
+            if candidate:
+                fields["name"] = candidate
+
+    # Gurmukhi cards: name also appears just above "D/O" or "S/O" or "W/O" line
+    if "name" not in fields:
+        for i, line in enumerate(lines):
+            if re.match(r"^(D/O|S/O|W/O|C/O)\s+", line, re.IGNORECASE):
+                # The line just before the D/O line is the holder's name
+                if i > 0:
+                    candidate = _as_name(lines[i - 1])
+                    if candidate:
+                        fields["name"] = candidate
+                        break
+
+    # UIDAI letter format: name appears just above the DOB line in the bottom mini-card
+    # Tesseract OCR for Aadhaar mini-card reads "mm ro: 25/09/2000" or "DOB: 25/09/2000"
+    _DOB_LINE_RE = re.compile(r"(?:DOB|D\.O\.B|mm\s*(?:ro|yy|yr))[\s:]+\d", re.IGNORECASE)
+    if "name" not in fields:
+        for i, line in enumerate(lines):
+            if _DOB_LINE_RE.match(line):
+                # First pass: direct _as_name on lines above
+                for j in range(max(0, i - 2), i):
+                    candidate = _as_name(lines[j])
+                    if candidate:
+                        fields["name"] = candidate
+                        break
+                # Second pass: strip leading OCR garbage and title-case
+                # e.g. "'hala anand" -> strip "'" -> "hala anand" -> title -> "Hala Anand"
+                if "name" not in fields:
+                    for j in range(max(0, i - 2), i):
+                        cleaned = re.sub(r"^[^A-Za-z]+", "", lines[j]).strip()
+                        candidate = _as_name(cleaned.title()) if cleaned else None
+                        if candidate:
+                            fields["name"] = candidate
+                            break
+                if "name" in fields:
+                    break
+
+    # Targeted mini-card section: engine.py appends "[MINICARD]\n..." for Aadhaar cards.
+    # The mini-card is a cleaned crop of the bottom 30% of the page and typically shows:
+    #   <Name in English>
+    #   D/O <Father Name>  |  DOB: DD/MM/YYYY  |  FEMALE/MALE
+    # We search this section specifically to avoid being misled by the info panel text.
+    if "name" not in fields:
+        mini_match = re.search(r"\[MINICARD\]\s*\n(.*)", raw_text, re.DOTALL)
+        if mini_match:
+            mini_text = mini_match.group(1)
+            mini_lines = _lines(mini_text)
+
+            def _mini_as_name(raw_line: str) -> str | None:
+                """Extract name from a mini-card line that may have leading OCR garbage.
+                Handles patterns like "F 'Shelika Anand : ..." -> "Shelika Anand"
+                """
+                # 1. Strip everything after a colon (separates name from rest on same line)
+                # 2. Strip all leading non-alpha chars
+                stripped = re.sub(r"\s*:.*$", "", raw_line)  # cut after first colon
+                stripped = re.sub(r"^[^A-Za-z]+", "", stripped).strip()
+                if not stripped:
+                    return None
+                # 3. Keep only the initial run of capitalized words (stop at lowercase)
+                words = stripped.split()
+                name_words = []
+                for w in words:
+                    core = re.sub(r"[^A-Za-z']", "", w)
+                    if not core or not core[0].isupper():
+                        break
+                    if len(core) == 1:
+                        # single uppercase letter — accept only as an initial if followed
+                        # by another word; don't accept it as a standalone "name"
+                        name_words.append(core)
+                        continue
+                    if core.upper() in _NOT_A_NAME:
+                        break
+                    name_words.append(core)
+                # Drop leading single-letter OCR artefacts (e.g. "F" from "F 'Shelika Anand")
+                while name_words and len(name_words[0]) == 1:
+                    name_words.pop(0)
+                if len(name_words) >= 2 and sum(len(w) for w in name_words) >= 5:
+                    return " ".join(name_words)
+                return None
+
+            # Strategy 1: line just above D/O line
+            for i, line in enumerate(mini_lines):
+                if re.match(r"^(D/O|S/O|W/O|C/O)\s+", line, re.IGNORECASE) and i > 0:
+                    candidate = _mini_as_name(mini_lines[i - 1])
+                    if candidate:
+                        fields["name"] = candidate
+                        break
+
+            # Strategy 2: line just above a date (DOB line) — search nearest first
+            if "name" not in fields:
+                _MINI_DATE_RE = re.compile(r"\d{2}[/\-.]\d{2}[/\-.]\d{4}")
+                for i, line in enumerate(mini_lines):
+                    if _MINI_DATE_RE.search(line):
+                        # Check line immediately above first, then 2 above
+                        for j in range(i - 1, max(-1, i - 3), -1):
+                            if j < 0:
+                                break
+                            candidate = _mini_as_name(mini_lines[j])
+                            if candidate:
+                                fields["name"] = candidate
+                                break
+                        if "name" in fields:
+                            break
+
+            # Strategy 3: find_name on just the mini-card text (less garbage = higher precision)
+            if "name" not in fields:
+                from app.modules.ocr.name_finder import find_name as _find_name
+                guess = _find_name(mini_text)
+                if guess:
+                    fields["name"] = guess.name
+
     # No labelled name: look for it anywhere on the card (see name_finder).
     if "name" not in fields:
         guess = find_name(raw_text)
@@ -201,7 +333,24 @@ def extract_aadhaar_fields(raw_text: str) -> dict:
             fields["name"] = guess.name
 
     # DOB (or year of birth on older cards)
-    dob = _value_near_label(lines, r"DOB|Date of Birth|D\.O\.B|जन्म\s*तिथि", _as_date)
+    dob = _value_near_label(lines, r"DOB|Date of Birth|D\.O\.B|जन्म\s*तिथि|fiust|ਮਿਤੀ", _as_date)
+    if not dob:
+        # Check mini-card lines (often contains "fiust008 DD/MM/YYYY" or just "DD/MM/YYYY")
+        mini_match = re.search(r"\[MINICARD\]\s*\n(.*)", raw_text, re.DOTALL)
+        if mini_match:
+            for m_line in _lines(mini_match.group(1)):
+                d = _as_date(m_line)
+                if d:
+                    dob = d
+                    break
+    if not dob:
+        # Search lines near DOB OCR artefacts (e.g. fiust, 008, birth)
+        for line in lines:
+            if re.search(r"fiust|008|birth|ਮਿਤੀ", line, re.IGNORECASE):
+                d = _as_date(line)
+                if d:
+                    dob = d
+                    break
     if dob:
         fields["date_of_birth"] = dob
     else:
@@ -288,6 +437,24 @@ def extract_pan_fields(raw_text: str) -> dict:
     dob = _value_near_label(lines, r"date of birth|DOB|जन्म", _as_date) or _as_date(raw_text)
     if dob:
         fields["date_of_birth"] = dob
+
+    # Layout fallback for modern PAN cards where "Name" label is missing or unread:
+    # 1. Search line above father line or DOB line
+    if "name" not in fields:
+        for i, line in enumerate(lines):
+            if re.search(r"father|पिता|DOB|date\s*of\s*birth|जन्म", line, re.IGNORECASE) and i > 0:
+                candidate = _as_name(lines[i - 1])
+                if candidate and candidate != fields.get("father_name"):
+                    fields["name"] = candidate
+                    break
+
+    # 2. Candidate from find_name
+    if "name" not in fields:
+        guess = find_name(raw_text)
+        if guess:
+            candidate = _as_name(guess.name)
+            if candidate and candidate != fields.get("father_name"):
+                fields["name"] = candidate
 
     return fields
 

@@ -279,7 +279,36 @@ def run_ocr(image: np.ndarray, document_type: str = "passport") -> OCRResult:
     main_text = "\n".join(" ".join(parts) for parts in lines.values())
     mean_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
-    # Step 3: For passports/visas, a second MRZ-tuned pass when the main pass
+    # Step 3a: For Aadhaar / National ID cards, a targeted mini-card OCR pass on the
+    # bottom quadrant where the holder's name appears in English.
+    # The main pass merges regional scripts (Gurmukhi/Hindi) and info panels,
+    # producing garbled text that name_finder cannot reliably parse.
+    # Cropping just the mini-card (bottom 30% of the image) and running
+    # a clean PSM-6 pass on it greatly improves name extraction.
+    if document_type in ("aadhar", "national_id"):
+        try:
+            import cv2
+            h, w = preprocessed.shape[:2]
+            # Bottom 30% of the page — the standard Aadhaar mini-card location.
+            # The card is typically taller than wide when scanned as a full letter.
+            y_start = int(h * 0.70)
+            mini_crop = preprocessed[y_start:, :]
+            if mini_crop.size > 0:
+                # Upscale small crops so Tesseract can read the small font.
+                scale = max(1.0, 300.0 / max(mini_crop.shape[:2]))
+                if scale > 1.0:
+                    mini_crop = cv2.resize(mini_crop, None, fx=scale, fy=scale,
+                                           interpolation=cv2.INTER_CUBIC)
+                mini_data = pytesseract.image_to_string(
+                    mini_crop,
+                    config="--oem 3 --psm 6",
+                )
+                if mini_data.strip():
+                    main_text = main_text + "\n\n[MINICARD]\n" + mini_data.strip()
+        except Exception as e:
+            logger.warning("Aadhaar mini-card OCR pass failed: %s", e)
+
+    # Step 3b: For passports/visas, a second MRZ-tuned pass when the main pass
     # did not already return both MRZ lines.
     if document_type in ("passport", "visa"):
         import re

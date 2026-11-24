@@ -55,3 +55,42 @@ def test_name_found_wherever_it_sits():
 def test_labelled_name_beats_an_unlabelled_one():
     text = "AMIT KUMAR SINGH\nName: Neha Gupta\nDOB: 02/02/2000"
     assert find_name(text).name == "Neha Gupta"
+
+
+def test_pan_card_trailing_ocr_noise_pruned():
+    from app.modules.ocr.indian_extractors import extract_pan_fields
+    sample_pan = """
+INCOME TAX DEPARTMENT
+GOVT. OF INDIA
+Name
+SHIVANSH JAISWAL Reon
+Father's Name
+RAMESH JAISWAL
+Date of Birth
+15/08/1998
+Permanent Account Number
+ABCDE1234F
+"""
+    fields = extract_pan_fields(sample_pan)
+    assert fields["name"] == "SHIVANSH JAISWAL"
+    assert fields["father_name"] == "RAMESH JAISWAL"
+    assert fields["id_number"] == "ABCDE1234F"
+
+
+def test_two_letter_noise_rejected():
+    assert find_name("Te Aine\nSome random non name text") is None
+    assert find_name("Pao Sh\n141012") is None
+
+
+def test_mini_card_aadhaar_extraction():
+    sample_minicard_aadhaar = """
+[MINICARD]
+F 'Shelika Anand : 'fu nate
+3 mH fiust008 25/09/2000
+9974 0716 4156
+"""
+    fields = extract_fields("aadhar", sample_minicard_aadhaar)
+    assert fields["name"] == "Shelika Anand"
+    assert fields["date_of_birth"] == "2000-09-25"
+    assert fields["id_number"] == "9974 0716 4156"
+
