@@ -127,10 +127,42 @@ def _iso_date(text: str) -> str | None:
 
 
 def _person_name(text: str) -> str | None:
+    """Parse a name from a region-detected name box's OCR output.
+
+    Applies the same blacklist and structural guards as the full-page
+    name_finder so that OCR noise words (REON, TE, AINE, ...) that land
+    inside a detected name region are still rejected.
+    """
+    from app.modules.ocr.name_finder import _NOT_A_NAME
+
     cleaned = re.sub(r"[^A-Za-z .'-]", " ", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" .'-")
-    words = [w for w in cleaned.split() if len(w) > 1 or w.isupper()]
-    if not words or len(cleaned) < 3 or len(words) > 6:
+    raw_words = cleaned.split()
+
+    # If the leading words are all-caps (e.g. SHIVANSH JAISWAL), stop at the
+    # first mixed-case word (e.g. Reon) — it is an OCR artefact, not part of
+    # the name.
+    words: list[str] = []
+    all_caps_prefix = all(w.isupper() for w in raw_words[:2]) if len(raw_words) >= 2 else False
+    for w in raw_words:
+        if w.upper() in _NOT_A_NAME:
+            if all_caps_prefix:
+                break       # stop at first blacklisted word in an all-caps name
+            continue        # skip isolated noise in a title-case name
+        core = re.sub(r"[^A-Za-z]", "", w)
+        # Reject tokens ≤ 2 chars that are not initials ("A.") and not "OM".
+        if len(core) <= 2 and not w.endswith(".") and core.upper() not in {"OM"}:
+            if all_caps_prefix:
+                break
+            continue
+        # For an all-caps name prefix, stop at the first non-all-caps word.
+        if all_caps_prefix and len(core) >= 2 and not w.isupper():
+            break
+        if not core or not core[0].isupper():
+            break
+        words.append(w)
+
+    if not words or len(words) > 6 or sum(len(re.sub(r"[^A-Za-z]", "", w)) for w in words) < 4:
         return None
     return " ".join(words)
 
