@@ -16,8 +16,8 @@ batch and anchored on a Hyperledger Fabric ledger.
 
 | | |
 |---|---|
-| Live dashboard | https://tumharipehchaan.vercel.app |
-| Android app | [Latest release (APK)](https://github.com/ScholarlyAdeeb/Pehchaan/releases/latest) |
+| Live dashboard | https://pehchan-ai-ten.vercel.app |
+| GitHub Repository | https://github.com/horridharsh07/pehchan-ai |
 | Architecture and measured results | [docs/TECHNICAL_ARCHITECTURE.md](docs/TECHNICAL_ARCHITECTURE.md) |
 | API | [docs/API.md](docs/API.md) |
 | Deployment | [docs/DEPLOYMENT_VERCEL.md](docs/DEPLOYMENT_VERCEL.md) |
@@ -25,7 +25,7 @@ batch and anchored on a Hyperledger Fabric ledger.
 
 ## Demo sign-in
 
-Open https://tumharipehchaan.vercel.app (or the Android app) and sign in with one of these
+Open https://pehchan-ai-ten.vercel.app (or the Android app) and sign in with one of these
 accounts. Each role sees a different workspace.
 
 | Role | Official ID / Email | Password | What you can do |

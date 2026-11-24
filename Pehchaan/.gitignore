@@ -216,3 +216,5 @@ BIBLIOGRAPHY.md
 # Android app builds (rebuilt from mobile/; shared as a release file, not in git).
 *.apk
 *.aab
+.vercel
+.env*
