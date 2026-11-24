@@ -1,0 +1,30 @@
+# render.yaml — Render Blueprint for the Pehchaan screening engine.
+# Click "Deploy to Render" or push to GitHub; Render builds the Docker
+# image and runs the FastAPI engine on a free instance.
+#
+# After deployment, set PYTHON_API_URL on your Vercel project to
+# https://<your-render-service>.onrender.com
+
+services:
+  - type: web
+    name: pehchaan-engine
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: deploy/render/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: ENGINE_API_KEY
+        sync: false                # set manually in Render dashboard
+      - key: PII_HASH_KEY
+        sync: false
+      - key: NEON_DATABASE_URL
+        sync: false
+      - key: ENGINE_ALLOW_PLAINTEXT
+        value: "true"
+      - key: LOCALIZATION_DEVICE
+        value: cpu
+      - key: CLASSIFIER_DEVICE
+        value: cpu
+      - key: ENGINE_TLS
+        value: "off"
