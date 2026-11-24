@@ -27,7 +27,7 @@ MODELS = {
     ),
 }
 
-DEST = pathlib.Path(__file__).resolve().parent.parent / "models" / "face"
+DEST = pathlib.Path(__file__).resolve().parent.parent.parent / "models" / "face"
 DEST.mkdir(parents=True, exist_ok=True)
 
 
