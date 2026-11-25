@@ -84,10 +84,15 @@ export async function runEngineScan(documentType: string, documentImage: string,
 
   let res: EngineResponse;
   try {
-    res = await engineRequest('/api/documents/scan', { method: 'POST', headers: engineHeaders(), form, timeoutMs: 120_000 });
+    // Keep below Vercel's 60s maxDuration so the gateway can return a clean 503 instead of an opaque 504.
+    res = await engineRequest('/api/documents/scan', { method: 'POST', headers: engineHeaders(), form, timeoutMs: 52_000 });
   } catch (err: any) {
+    const isRemote = Boolean(process.env.PYTHON_API_URL);
+    const hint = isRemote
+      ? 'The cloud screening engine is waking up or busy — please retry in a few seconds.'
+      : 'Start the Python backend (start_all.bat).';
     throw new EngineError(
-      `Screening engine is not reachable at ${PYTHON_API_URL}. Start the Python backend (start_all.bat). (${err?.message || err})`,
+      `Screening engine is not reachable at ${PYTHON_API_URL}. ${hint} (${err?.message || err})`,
       503,
     );
   }

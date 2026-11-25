@@ -73,8 +73,9 @@ self.addEventListener('fetch', (event) => {
   // Network-first for HTML / navigation
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match('/index.html') || caches.match('/');
+      fetch(event.request).catch(async () => {
+        const cached = (await caches.match('/index.html')) || (await caches.match('/'));
+        return cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
       })
     );
     return;

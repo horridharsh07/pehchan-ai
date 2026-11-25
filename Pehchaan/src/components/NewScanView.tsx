@@ -105,6 +105,15 @@ export const NewScanView: React.FC<NewScanViewProps> = ({ onNavigate, onAddRecor
 
   useEffect(() => () => stopCamera(), []);
 
+  // Pre-warm the cloud screening engine while the operator selects and uploads images.
+  useEffect(() => {
+    if (!token) return;
+    fetch('/api/engine/health', {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
+    }).catch(() => undefined);
+  }, [token]);
+
   const stopCamera = () => {
     const stream = videoRef.current?.srcObject as MediaStream | null;
     stream?.getTracks().forEach((t) => t.stop());

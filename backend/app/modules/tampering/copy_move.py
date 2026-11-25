@@ -39,11 +39,14 @@ def detect_copy_move(image: np.ndarray) -> CopyMoveResult:
     # Downscale large images before feature detection — copy-move doesn't
     # need pixel-level precision, and 750px is enough for document forgery.
     h, w = gray.shape[:2]
+    bgr_for_faces = image if image.ndim == 3 else cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
     if max(h, w) > 1000:
         scale = 1000 / max(h, w)
-        gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        new_size = (int(w * scale), int(h * scale))
+        gray = cv2.resize(gray, new_size, interpolation=cv2.INTER_AREA)
+        bgr_for_faces = cv2.resize(bgr_for_faces, new_size, interpolation=cv2.INTER_AREA)
 
-    orb = cv2.ORB_create(nfeatures=4000)
+    orb = cv2.ORB_create(nfeatures=2000)
     keypoints, descriptors = orb.detectAndCompute(gray, None)
 
     if descriptors is None or len(keypoints) < 10:
@@ -51,10 +54,11 @@ def detect_copy_move(image: np.ndarray) -> CopyMoveResult:
 
     # Passports legitimately print the holder's portrait twice (main photo +
     # "ghost" image); matches between face regions are not a clone forgery.
+    # Pass 3-channel BGR so YuNet runs (~0.1s) instead of falling back to slow Haar (~4.5s).
     from app.modules.face.detector import detect_faces
 
     face_boxes = [
-        (f.x - f.w * 0.2, f.y - f.h * 0.2, f.x + f.w * 1.2, f.y + f.h * 1.2) for f in detect_faces(gray)
+        (f.x - f.w * 0.2, f.y - f.h * 0.2, f.x + f.w * 1.2, f.y + f.h * 1.2) for f in detect_faces(bgr_for_faces)
     ]
 
     def _on_face(pt: tuple[float, float]) -> bool:
